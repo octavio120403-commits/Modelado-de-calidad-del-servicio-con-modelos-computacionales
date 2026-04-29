@@ -669,7 +669,7 @@ def evaluate_model(model, test_loader, device: str = "cpu",
     mu_all      = torch.cat(all_mu, 0)
     sigma_all   = torch.cat(all_sigma, 0)
 
-    coverages = {}
+    coverages = {} #importante
     for level in [0.50, 0.70, 0.90, 0.99]:
         alpha = 1 - level
         lo_p  = alpha / 2
@@ -726,7 +726,7 @@ def predict_sample(model, ctx_tensor, L: int, device: str = "cpu",
 
     means   = gmm_mean(pi, mu).numpy()        # (L,)
     quants  = {}
-    for q in [0.005, 0.025, 0.15, 0.50, 0.85, 0.975, 0.995]:
+    for q in [0.005, 0.025, 0.15, 0.85, 0.975, 0.995]:
         vals = []
         for l in range(L):
             k_s = torch.multinomial(pi[l], n_mc, replacement=True)
@@ -769,8 +769,8 @@ def plot_prediction_sample(history_vals, future_vals, pred_mean,
     bands = [
         (0.005, 0.995, "#9C27B0", 0.15, "99% CI"),
         (0.025, 0.975, "#7B1FA2", 0.22, "95% CI"),
-        (0.15,  0.85,  "#AB47BC", 0.30, "70% CI"),
-        (0.25,  0.75,  "#CE93D8", 0.40, "50% CI"),
+        (0.150, 0.850, "#AB47BC", 0.30, "70% CI"),
+        (0.150, 0.850, "#CE93D8", 0.40, "50% CI"),
     ]
     for lo_q, hi_q, color, alpha, label in bands:
         ax.fill_between(t_fut,
@@ -995,9 +995,13 @@ def plot_model_comparison_bar(results: dict, metric: str = "nll"):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
+    OUT = "./resultados2/"
+
+    import os
+    os.makedirs(OUT, exist_ok=True)
+
     print("\n" + "=" * 65)
     print("  PROBABILISTIC DELAY FORECASTING IN 5G")
-    print("  Replicación de Mostafavi et al. (arXiv:2503.15297v1)")
     print("=" * 65)
 
     # ── Configuración ───────────────────────────────────────────────────
@@ -1023,13 +1027,13 @@ def main():
                                      interarrival_ms=50.0)
 
     fig_data = plot_data_overview(data_rg)
-    plt.savefig("/mnt/user-data/outputs/fig1_data_overview.png",
+    plt.savefig(OUT + "fig1_data_overview.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_data)
     print("  ✓ fig1_data_overview.png guardado")
 
     fig_gmm = plot_gmm_example()
-    plt.savefig("/mnt/user-data/outputs/fig2_gmm_example.png",
+    plt.savefig(OUT + "fig2_gmm_example.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_gmm)
     print("  ✓ fig2_gmm_example.png guardado")
@@ -1086,7 +1090,7 @@ def main():
         histories[name] = hist
 
     fig_curves = plot_training_curves(histories)
-    plt.savefig("/mnt/user-data/outputs/fig3_training_curves.png",
+    plt.savefig(OUT + "fig3_training_curves.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_curves)
     print("  ✓ fig3_training_curves.png guardado")
@@ -1112,7 +1116,7 @@ def main():
         {n: {"nll": results_base[n]["nll"]} for n in results_base},
         metric="nll"
     )
-    plt.savefig("/mnt/user-data/outputs/fig4_model_comparison_nll.png",
+    plt.savefig(OUT + "fig4_model_comparison_nll.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_bar_nll)
 
@@ -1120,13 +1124,13 @@ def main():
         {n: {"mae": results_base[n]["mae_ms"]} for n in results_base},
         metric="mae"
     )
-    plt.savefig("/mnt/user-data/outputs/fig5_model_comparison_mae.png",
+    plt.savefig(OUT + "fig5_model_comparison_mae.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_bar_mae)
 
     fig_cov = plot_coverage(coverage_dict,
                             title="Reduced Gain Config, L=20, N_train=10k")
-    plt.savefig("/mnt/user-data/outputs/fig6_coverage_plot.png",
+    plt.savefig(OUT + "fig6_coverage_plot.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_cov)
     print("  ✓ fig4-6 guardados")
@@ -1150,18 +1154,18 @@ def main():
         for name, model in models.items():
             r = evaluate_model(model, loader_tmp, device=DEVICE,
                                L=l_eval, delay_std=d_std, delay_mean=d_mean)
-            nll_by_h[name][l_eval] = r["nll"]
-            mae_by_h[name][l_eval] = r["mae_ms"]
+            nll_by_h[name][l_eval] = {"nll": r["nll"]}
+            mae_by_h[name][l_eval] = {"mae_ms": r["mae_ms"]}
 
     fig_nll_h = plot_nll_vs_horizon(nll_by_h,
                                     "Reduced Gain Config")
-    plt.savefig("/mnt/user-data/outputs/fig7_nll_vs_horizon.png",
+    plt.savefig(OUT + "fig7_nll_vs_horizon.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_nll_h)
 
     fig_mae_h = plot_mae_vs_horizon(mae_by_h,
                                     "Reduced Gain Config")
-    plt.savefig("/mnt/user-data/outputs/fig8_mae_vs_horizon.png",
+    plt.savefig(OUT + "fig8_mae_vs_horizon.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_mae_h)
     print("  ✓ fig7-8 guardados")
@@ -1199,7 +1203,7 @@ def main():
         )
 
     plt.tight_layout()
-    plt.savefig("/mnt/user-data/outputs/fig9_prediction_sample.png",
+    plt.savefig(OUT + "fig9_prediction_sample.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_pred)
     print("  ✓ fig9_prediction_sample.png guardado")
@@ -1219,7 +1223,7 @@ def main():
               f"{r['coverages'].get(0.99, 0):>8.3f}")
     print("=" * 65)
 
-    print("\n  Todos los gráficos guardados en /mnt/user-data/outputs/")
+    print("\n  Todos los gráficos guardados en ./resultados2/")
     print("  Archivos generados:")
     files = [
         "fig1_data_overview.png        — Datos 5G generados",

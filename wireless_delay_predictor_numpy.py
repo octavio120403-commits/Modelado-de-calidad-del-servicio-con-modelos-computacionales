@@ -30,23 +30,23 @@ rng = np.random.default_rng(42)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def generate_5g_delay_data(n_packets=12000, config="reduced_gain",
-                            interarrival_ms=50.0, seed=42):
+                            interarrival_ms=50.0, seed=42): #base experimental necesaria para entrenar el modelo
     """
     Simula los datos de delay del testbed ExPECA descrito en el artículo.
 
     Dos configuraciones (Sección IV-A):
-      - reduced_gain:      MCS fluctúa 12-18, BLER ~10%, patrones complejos
+      - reduced_gain:      MCS fluctúa 12-18, BLER ~10%, patrones complejos 
       - stable_high_gain:  MCS ~20 fijo, retransmisiones raras, más predecible
     """
     rng_local = np.random.default_rng(seed)
 
-    if config == "reduced_gain":
-        base_ms, saw_amp      = 18.0, 3.5
-        harq_jump, harq_p     = 7.5, 0.10
-        rlc_p                 = 0.006
-        mcs_mu, mcs_sig       = 15, 2
-        mcs_lo, mcs_hi        = 12, 18
-    else:  # stable_high_gain
+    if config == "reduced_gain": #(CANAL INESTABLE)
+        base_ms, saw_amp      = 18.0, 3.5 #RETARDO BASE + VARIACION PERIODICA
+        harq_jump, harq_p     = 7.5, 0.10 #INCREMENTO DELAY POR RETRANSM. HARQ + PROBABILIDAD
+        rlc_p                 = 0.006 #PROBABILIDAD RETRANSM. RLC
+        mcs_mu, mcs_sig       = 15, 2 #MEDIA Y DESVIACION DEL MCS
+        mcs_lo, mcs_hi        = 12, 18 #LIMITES DE MCS
+    else:  # stable_high_gain    (CANAL ESTABLE, POCAS RETRANSMISIONES)
         base_ms, saw_amp      = 20.0, 2.5
         harq_jump, harq_p     = 7.5, 0.01
         rlc_p                 = 0.001
@@ -94,7 +94,8 @@ def generate_5g_delay_data(n_packets=12000, config="reduced_gain",
 # 2. PREPROCESAMIENTO Y VENTANAS TEMPORALES (Sección III-D, ecuación 6)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_windows(data, H=20, L=20, stats=None):
+def build_windows(data, H=20, L=20, stats=None): #implementa (Xm,ym,…,ym+L−1), osea ventana histórica → entrada del 
+                                                 #modelo y ventana futura → objetivo de predicción probabilística
     """
     Construye muestras (X_m, y_m..y_{m+L-1}) como define el artículo.
     """
@@ -102,8 +103,8 @@ def build_windows(data, H=20, L=20, stats=None):
     N      = len(delays)
 
     if stats is None:
-        stats = {k: (delays.mean(), delays.std() + 1e-6) for k in ["delay"]}
-        stats.update({
+        stats = {k: (delays.mean(), delays.std() + 1e-6) for k in ["delay"]} #Media y desviación del delay
+        stats.update({ #Añade estadísticas de otras features
             "mcs": (data["mcs"].mean(),   data["mcs"].std()   + 1e-6),
             "pkt": (data["packet_size_b"].mean(), data["packet_size_b"].std() + 1e-6),
             "iat": (data["interarrival_ms"].mean(), data["interarrival_ms"].std() + 1e-6),
@@ -111,7 +112,7 @@ def build_windows(data, H=20, L=20, stats=None):
 
     def z(x, key): return (x - stats[key][0]) / stats[key][1]
 
-    ctx = np.stack([
+    ctx = np.stack([ #se construye vector Xn
         z(delays,                 "delay"),
         z(data["mcs"],            "mcs"),
         data["harq_retx"] / 3.0,
@@ -125,13 +126,13 @@ def build_windows(data, H=20, L=20, stats=None):
 
     X, Y = [], []
     for m in range(H, N - L + 1):
-        X.append(ctx[m - H: m])             # (H, 7)
-        Y.append(delay_n[m: m + L])         # (L,)
+        X.append(ctx[m - H: m])             # (H, 7) //Contruye Xm=(xm−H​,...,xm−1​)
+        Y.append(delay_n[m: m + L])         # (L,)   //Contruye (ym​,...,ym+L−1​)
 
     return np.array(X, np.float32), np.array(Y, np.float32), stats
 
 
-def train_val_test_split(X, Y, ratios=(0.70, 0.15, 0.15)):
+def train_val_test_split(X, Y, ratios=(0.70, 0.15, 0.15)):#Devuelve train, validation y test
     N = len(X)
     i1 = int(ratios[0] * N)
     i2 = int((ratios[0] + ratios[1]) * N)
@@ -142,26 +143,26 @@ def train_val_test_split(X, Y, ratios=(0.70, 0.15, 0.15)):
 # 3. GAUSSIAN MIXTURE MODEL — funciones básicas (Sección III-C)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def gmm_nll_numpy(y, pi, mu, sigma):
+def gmm_nll_numpy(y, pi, mu, sigma): #Calcula negative log-likelihood de una mezcla gaussiana. Ecuacion 7
     """
     NLL de GMM en numpy.
     y:  (N,)
     pi, mu, sigma: (N, K)
     """
     y = y[:, None]                          # (N, 1)
-    log_p = (
+    log_p = (                               #Implementa logN(y∣μ,σ)
         -0.5 * ((y - mu) / sigma) ** 2
         - np.log(sigma)
         - 0.5 * np.log(2 * np.pi)
     )
-    log_mix = np.log(pi + 1e-8) + log_p
+    log_mix = np.log(pi + 1e-8) + log_p     #Implementa log(πk​⋅Nk​)
     log_mix_total = log_mix - log_mix.max(axis=1, keepdims=True)
     log_sum = (np.exp(log_mix_total).sum(axis=1, keepdims=True))
-    nll = -(log_mix.max(axis=1) + np.log(log_sum.squeeze()))
+    nll = -(log_mix.max(axis=1) + np.log(log_sum.squeeze())) #Negative log-likelihood
     return nll.mean()
 
 
-def gmm_sample(pi, mu, sigma, n_samp=2000, local_rng=None):
+def gmm_sample(pi, mu, sigma, n_samp=2000, local_rng=None): #Genera muestras desde la distribución mezcla
     """Muestrea de una distribución GMM (pi,mu,sigma: vectores de K)."""
     if local_rng is None:
         local_rng = np.random.default_rng(0)
@@ -170,12 +171,12 @@ def gmm_sample(pi, mu, sigma, n_samp=2000, local_rng=None):
     return mu[k] + sigma[k] * local_rng.standard_normal(n_samp)
 
 
-def gmm_quantile(pi, mu, sigma, q, n_samp=2000):
+def gmm_quantile(pi, mu, sigma, q, n_samp=2000): #Calcula cuantiles de la distribución mezcla
     s = gmm_sample(pi, mu, sigma, n_samp)
     return np.quantile(s, q)
 
 
-def gmm_mean(pi, mu):
+def gmm_mean(pi, mu):#Calcula media de la mezcla
     return (pi * mu).sum(axis=-1)
 
 
@@ -188,7 +189,7 @@ def gmm_mean(pi, mu):
 # Para simular resultados realistas, entrenamos modelos lineales con
 # características estadísticas que capturan la esencia de cada arquitectura.
 
-class NumpyGMMPredictor:
+class NumpyGMMPredictor:#simula un modelo del tipo: Xm​→θm+l​→P(Ym+l​∣Xm​) (ventana histórica → parámetros GMM → distribución futura del delay)
     """
     Predictor GMM base que aprende estadísticas condicionales del delay.
     Simula el comportamiento de MDN + diferentes backbones.
@@ -288,7 +289,7 @@ class NumpyGMMPredictor:
 
         return pi.copy(), mu.copy(), sigma.copy()
 
-    def predict_batch(self, X):
+    def predict_batch(self, X): #Predice múltiples contextos
         return [self.predict_single(X[i]) for i in range(len(X))]
 
     def predict_multistep(self, ctx_H7, L):
@@ -865,10 +866,13 @@ def fig_token_size_tradeoff(out_path):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
-    OUT = "/mnt/user-data/outputs/" #aqui hay que meter imagenes en carpeta de resultados y sino crear carpeta 
+    OUT = "./resultados/"
+    # Y añade esta línea justo debajo para que cree la carpeta si no existe:
+    import os
+    os.makedirs(OUT, exist_ok=True)
+    
     print("\n" + "=" * 65)
     print("  PROBABILISTIC DELAY FORECASTING IN 5G")
-    print("  Replicación de Mostafavi et al. — arXiv:2503.15297v1")
     print("=" * 65)
 
     # ── Parámetros ───────────────────────────────────────────────────────
@@ -1014,7 +1018,7 @@ def main():
               f"{cv.get(0.99, 0):>8.3f}")
     print("=" * 65)
 
-    print("\n✅ Todas las figuras guardadas en /mnt/user-data/outputs/")
+    print("\n✅ Todas las figuras guardadas en ./resultados/")
     figuras = [
         ("fig1_data_overview.png",    "Visión general de datos 5G sintéticos"),
         ("fig2_gmm_example.png",      "Explicación del GMM (Figura 6 del artículo)"),
