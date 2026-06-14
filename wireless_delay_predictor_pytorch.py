@@ -1009,7 +1009,7 @@ def main():
     H        = 20       # ventana histórica
     L        = 20       # horizonte de predicción
     BATCH    = 64
-    EPOCHS   = 25
+    EPOCHS   = 100       #CON 100 PODRIA DAR RESULTADOS UN POCO MAS ROBUSTOS
     N_DATA   = 12000    # paquetes totales por configuración
     LR       = 8e-4
     N_COMP   = 8        # componentes GMM
