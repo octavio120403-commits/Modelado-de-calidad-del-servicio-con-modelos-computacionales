@@ -1,6 +1,6 @@
 # Predicción Probabilística de Delay en Redes 5G
 
-Implementación en Python de un sistema de predicción probabilística de delay (latencia) para redes 5G, basado en el artículo *"Probabilistic Delay Forecasting in 5G Using Recurrent and Attention-Based Architectures"* (Mostafavi et al., arXiv:2503.15297v1).
+Implementación en Python de un sistema de predicción probabilística de delay (latencia) para redes 5G.
 
 El proyecto compara cuatro arquitecturas de modelos —**MLP**, **LSTM single-step**, **LSTM multi-step** y **Transformer encoder-decoder**— para predecir la distribución completa de probabilidad del delay de paquetes futuros, usando una **Mixture Density Network (MDN)** con **Gaussian Mixture Model (GMM)** como capa de salida.
 
@@ -9,7 +9,7 @@ El proyecto compara cuatro arquitecturas de modelos —**MLP**, **LSTM single-st
 | Fichero | Descripción |
 |---|---|
 | `wireless_delay_predictor_numpy.py` | Versión ligera y autocontenida. Sólo requiere `numpy`, `matplotlib` y `scipy`. Los modelos se ajustan mediante estimación estadística (EM para el GMM), no mediante redes neuronales con gradiente real. Ideal para ejecutar rápido y visualizar el concepto completo. |
-| `wireless_delay_predictor_pytorch.py` | Versión completa con redes neuronales reales (MLP, LSTM y Transformer) entrenadas mediante backpropagation con PyTorch. Replica fielmente la arquitectura del artículo de referencia. Requiere `torch` además de `numpy` y `matplotlib`. |
+| `wireless_delay_predictor_pytorch.py` | Versión completa con redes neuronales reales (MLP, LSTM y Transformer) entrenadas mediante backpropagation con PyTorch. Requiere `torch` además de `numpy` y `matplotlib`. |
 
 ## Requisitos
 
@@ -59,7 +59,7 @@ Ambos scripts siguen la misma estructura de seis pasos:
 
 5. **Evaluación** — Cálculo de NLL, MAE (error absoluto medio en ms) y cobertura empírica (calibración de los intervalos de confianza al 50%, 70%, 90% y 99%).
 
-6. **Visualización** — Generación de figuras que replican las del artículo de referencia: distribución de datos, ejemplos de GMM, diagramas de arquitectura, predicciones probabilísticas con bandas de confianza, NLL/MAE frente al horizonte de predicción, impacto del tamaño del dataset, coste computacional y calibración.
+6. **Visualización** — Generación de figuras: distribución de datos, ejemplos de GMM, diagramas de arquitectura, predicciones probabilísticas con bandas de confianza, NLL/MAE frente al horizonte de predicción, impacto del tamaño del dataset, coste computacional y calibración.
 
 ## Figuras generadas
 
@@ -88,7 +88,6 @@ Ambos scripts siguen la misma estructura de seis pasos:
 |---|---|---|
 | Modelos | Aproximación estadística (EM + heurísticas por arquitectura) | Redes neuronales reales con backpropagation |
 | Velocidad | Muy rápida (segundos) | Más lenta, especialmente el Transformer en CPU (minutos) |
-| Fidelidad al artículo | Conceptual | Fiel a la arquitectura descrita |
 | Dependencias | numpy, matplotlib, scipy | numpy, matplotlib, torch |
 
 ## Referencia

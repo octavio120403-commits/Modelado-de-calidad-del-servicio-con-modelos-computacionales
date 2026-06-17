@@ -1,19 +1,16 @@
 """
 =============================================================================
  Probabilistic Delay Forecasting in 5G Using Recurrent and
- Attention-Based Architectures
+ Attention-Based Architectures - Implementacion Pytorch
 =============================================================================
- Implementación Python basada en:
-   Mostafavi et al., "Probabilistic Delay Forecasting in 5G Using
-   Recurrent and Attention-Based Architectures", arXiv:2503.15297v1
 
- Este script replica:
+ Este script implementa:
    1. Generación de datos sintéticos de delay 5G (patrones realistas)
    2. Tokenización de contexto de paquetes
    3. Modelo MLP (single-step, baseline)
    4. Modelo LSTM-SS (single-step con historia)
-   5. Modelo LSTM (multi-step)
-   6. Modelo Transformer encoder-decoder (multi-step)
+   5. Modelo LSTM con varias semillas (multi-step)
+   6. Modelo Transformer encoder-decoder con varias semillas (multi-step)
    7. Mixture Density Network (MDN) con Gaussian Mixture Model (GMM)
    8. Entrenamiento con Negative Log-Likelihood (NLL)
    9. Evaluación: NLL, MAE, Coverage empírica
@@ -48,13 +45,13 @@ def generate_5g_delay_data(
     seed: int = 42
 ) -> dict:
     """
-    Genera datos sintéticos de delay de red 5G que simulan los dos
-    escenarios del artículo:
+    Genera datos sintéticos de delay de red 5G que simula dos
+    escenarios:
 
     - 'reduced_gain':   MCS fluctúa entre 12-18, BLER ~10%, más retransmisiones
     - 'stable_high_gain': MCS fijo ~20, retransmisiones raras, delay más predecible
 
-    El delay tiene dos componentes clave del artículo:
+    El delay tiene dos componentes clave:
       a) Patrón diente de sierra (sawtooth) por desincronización del reloj
          de aplicación con el slot 5G TDD
       b) Saltos aleatorios por retransmisiones HARQ/RLC (~7.5ms cada uno)
@@ -153,7 +150,7 @@ def generate_5g_delay_data(
 class PacketDelayDataset(Dataset):
     """
     Construye muestras de entrenamiento con ventana histórica H y
-    horizonte futuro L, tal como describe el artículo (ecuación 6):
+    horizonte futuro L:
         D = { (X_m, y_m, ..., y_{m+L-1}) }_{m=1}^{N}
     """
     def __init__(self, data: dict, H: int = 20, L: int = 20,
@@ -186,7 +183,7 @@ class PacketDelayDataset(Dataset):
         pkt_n     = (pkt_size - s["pkt_mean"])   / s["pkt_std"]
         iat_n     = (iat      - s["iat_mean"])   / s["iat_std"]
 
-        # Vector de contexto de paquete: 6 features como en el artículo
+        # Vector de contexto de paquete: 6 features
         # [delay_norm, mcs_norm, harq_retx, rlc_retx, slot/9, pkt_norm, iat_norm]
         self.context = np.stack([
             delay_n,
@@ -225,8 +222,7 @@ class DelayContextTokenizer(nn.Module):
     Mapea el vector de contexto de paquete x_n ∈ R^M a un token
     u_n ∈ R^S mediante una función de embedding aprendible φ.
 
-    Sigue la descripción de la Sección III-A del artículo:
-    concatena embeddings individuales y los procesa con un MLP de 3 capas.
+    Concatena embeddings individuales y los procesa con un MLP de 3 capas.
     """
     def __init__(self, input_dim: int = 7, token_dim: int = 16,
                  dropout: float = 0.2):
@@ -280,7 +276,6 @@ class MDNHead(nn.Module):
 def gmm_nll(y, pi, mu, sigma):
     """
     Negative Log-Likelihood de una Gaussian Mixture Model.
-    Ecuación (7) del artículo.
 
     y:     (batch, L) o (batch,)
     pi:    (batch, L, K) o (batch, K)
@@ -343,7 +338,7 @@ class MLPPredictor(nn.Module):
     """
     Baseline de red feed-forward totalmente conectada.
     Sólo usa el token más reciente (single-step).
-    Parámetros ≈ 37k como en el artículo.
+    Parámetros ≈ 37k.
     """
     def __init__(self, input_dim: int = 7, token_dim: int = 16,
                  n_components: int = 8, dropout: float = 0.2):
@@ -401,7 +396,7 @@ class LSTMSingleStep(nn.Module):
 # ── 5c. LSTM Multi-Step ──────────────────────────────────────────────────────
 class LSTMMultiStep(nn.Module):
     """
-    LSTM con decodificación multi-paso usando padding tokens (Figura 4).
+    LSTM con decodificación multi-paso usando padding tokens.
     Produce distribuciones para L pasos futuros simultáneamente.
     Parámetros ≈ 33k.
     """
@@ -441,7 +436,6 @@ class LSTMMultiStep(nn.Module):
 class TransformerPredictor(nn.Module):
     """
     Transformer encoder-decoder para predicción multi-horizonte.
-    Sigue exactamente la arquitectura de las Figuras 4-5 y ecuaciones (4)-(5).
 
     - Encoder: procesa la secuencia histórica U ∈ R^{H×S}
     - Decoder: genera Θ ∈ R^{L×V} usando query learnable Q ∈ R^{L×S}
@@ -503,10 +497,10 @@ class TransformerPredictor(nn.Module):
         # Tokenizar + positional encoding
         tokens = self.tokenizer(x) + self.pos_enc[:, :H, :]    # (B, H, S)
 
-        # Encoder (ecuación 4)
+        # Encoder 
         memory = self.encoder(tokens)                           # (B, H, S)
 
-        # Decoder queries Q^(0) (Figura 5)
+        # Decoder queries Q^(0)
         q_idx = torch.arange(L, device=x.device)
         Q = self.query_embed(q_idx).unsqueeze(0).expand(batch, -1, -1)
         Q = Q + self.pos_enc[:, :L, :]                         # (B, L, S)
@@ -515,7 +509,7 @@ class TransformerPredictor(nn.Module):
         tgt_mask = nn.Transformer.generate_square_subsequent_mask(
             L, device=x.device)
 
-        # Decoder (ecuación 5)
+        # Decoder
         out = self.decoder(Q, memory, tgt_mask=tgt_mask)       # (B, L, S)
 
         # MDN head
@@ -531,7 +525,7 @@ def train_model(model, train_loader, val_loader, n_epochs: int = 30,
                 lr: float = 1e-3, device: str = "cpu",
                 model_name: str = "Model", L: int = 20) -> dict:
     """
-    Entrena un modelo minimizando la NLL (ecuación 7 del artículo).
+    Entrena un modelo minimizando la NLL.
     Retorna historial de pérdidas y tiempo de entrenamiento.
     """
     model = model.to(device)
@@ -746,7 +740,7 @@ def plot_prediction_sample(history_vals, future_vals, pred_mean,
                            delay_std:  float = 1.0,
                            ax=None):
     """
-    Replica la Figura 8 del artículo: predicción con bandas de cobertura.
+    Predicción con bandas de cobertura.
     """
     H = len(history_vals)
     L = len(future_vals)
@@ -788,7 +782,7 @@ def plot_prediction_sample(history_vals, future_vals, pred_mean,
 
 
 def plot_nll_vs_horizon(results_by_model: dict, title: str = ""):
-    """Replica la Figura 9/11a: NLL vs horizonte de predicción."""
+    
     fig, ax = plt.subplots(figsize=(8, 5))
     markers = {"MLP": "o", "LSTM-SS": "^", "LSTM": "s", "Transformer": "D"}
     colors  = {"MLP": "#2196F3", "LSTM-SS": "#FF9800",
@@ -812,7 +806,7 @@ def plot_nll_vs_horizon(results_by_model: dict, title: str = ""):
 
 
 def plot_mae_vs_horizon(results_by_model: dict, title: str = ""):
-    """Replica la Figura 11b: MAE vs horizonte."""
+    
     fig, ax = plt.subplots(figsize=(8, 5))
     markers = {"MLP": "o", "LSTM-SS": "^", "LSTM": "s", "Transformer": "D"}
     colors  = {"MLP": "#2196F3", "LSTM-SS": "#FF9800",
@@ -836,7 +830,7 @@ def plot_mae_vs_horizon(results_by_model: dict, title: str = ""):
 
 
 def plot_coverage(coverage_dict: dict, title: str = ""):
-    """Replica la Figura 14: cobertura empírica vs nominal."""
+    
     fig, ax = plt.subplots(figsize=(7, 7))
     nominal = [0.50, 0.70, 0.90, 0.99]
 
@@ -933,7 +927,6 @@ def plot_data_overview(data: dict):
 
 
 def plot_gmm_example():
-    """Replica la Figura 6: ejemplo de GMM con 2 componentes."""
     fig, ax = plt.subplots(figsize=(9, 4))
     x = np.linspace(5, 45, 500)
 
@@ -995,7 +988,7 @@ def plot_model_comparison_bar(results: dict, metric: str = "nll"):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
-    OUT = "./resultados2/"
+    OUT = "./resultados2.1/"
 
     import os
     os.makedirs(OUT, exist_ok=True)
@@ -1062,48 +1055,87 @@ def main():
 
     print(f"  Train: {len(train_ds)}, Val: {len(val_ds)}, Test: {len(test_ds)}")
 
-    # ── 3. Instanciar modelos ────────────────────────────────────────────
-    print("\n[3/6] Instanciando modelos...")
-    models = {
-        "MLP": MLPPredictor(
-            input_dim=7, token_dim=TOKEN_DIM, n_components=N_COMP),
-        "LSTM-SS": LSTMSingleStep(
-            input_dim=7, token_dim=TOKEN_DIM, n_components=N_COMP),
-        "LSTM": LSTMMultiStep(
-            input_dim=7, token_dim=TOKEN_DIM, n_components=N_COMP),
-        "Transformer": TransformerPredictor(
-            input_dim=7, token_dim=TOKEN_DIM, n_heads=4,
-            n_enc_layers=4, n_dec_layers=4, ff_dim=128,
-            n_components=N_COMP),
-    }
-    for name, m in models.items():
-        n_p = sum(p.numel() for p in m.parameters() if p.requires_grad)
-        print(f"  {name:12s}: {n_p:,} parámetros")
+    # ── 3. Instanciar y entrenar modelos con múltiples semillas ─────────────
+    print("\n[3/6] Instanciando y entrenando modelos...")
+
+    SEEDS = [42, 123, 7]  # semillas para LSTM y Transformer
+
+    # MLP y LSTM-SS: semilla única (modelos baseline)
+    single_seed_names = ["MLP", "LSTM-SS"]
+    # LSTM y Transformer: múltiples semillas
+    multi_seed_names  = ["LSTM", "Transformer"]
+
+    def build_model(name):
+        if name == "MLP":
+            return MLPPredictor(input_dim=7, token_dim=TOKEN_DIM, n_components=N_COMP)
+        elif name == "LSTM-SS":
+            return LSTMSingleStep(input_dim=7, token_dim=TOKEN_DIM, n_components=N_COMP)
+        elif name == "LSTM":
+            return LSTMMultiStep(input_dim=7, token_dim=TOKEN_DIM, n_components=N_COMP)
+        elif name == "Transformer":
+            return TransformerPredictor(
+                input_dim=7, token_dim=TOKEN_DIM, n_heads=4,
+                n_enc_layers=4, n_dec_layers=4, ff_dim=128,
+                n_components=N_COMP)
 
     # ── 4. Entrenamiento ─────────────────────────────────────────────────
     print("\n[4/6] Entrenando modelos...")
-    histories = {}
-    for name, model in models.items():
-        hist = train_model(model, train_loader, val_loader,
+
+    # Baseline (semilla única 42)
+    models_single = {}
+    histories_single = {}
+    for name in single_seed_names:
+        torch.manual_seed(42)
+        np.random.seed(42)
+        m = build_model(name)
+        n_p = sum(p.numel() for p in m.parameters() if p.requires_grad)
+        print(f"  {name:12s}: {n_p:,} parámetros (semilla 42)")
+        hist = train_model(m, train_loader, val_loader,
                            n_epochs=EPOCHS, lr=LR, device=DEVICE,
                            model_name=name, L=L)
-        histories[name] = hist
+        models_single[name] = m
+        histories_single[name] = hist
 
-    fig_curves = plot_training_curves(histories)
+    # Modelos con múltiples semillas
+    # Estructura: multi_runs[name] = lista de (model, history) por semilla
+    multi_runs = {name: [] for name in multi_seed_names}
+    for name in multi_seed_names:
+        m_ref = build_model(name)
+        n_p = sum(p.numel() for p in m_ref.parameters() if p.requires_grad)
+        print(f"  {name:12s}: {n_p:,} parámetros ({len(SEEDS)} semillas)")
+        del m_ref
+        for seed in SEEDS:
+            torch.manual_seed(seed)
+            np.random.seed(seed)
+            m = build_model(name)
+            print(f"    Semilla {seed}...")
+            hist = train_model(m, train_loader, val_loader,
+                               n_epochs=EPOCHS, lr=LR, device=DEVICE,
+                               model_name=f"{name}_s{seed}", L=L)
+            multi_runs[name].append((m, hist))
+
+    # Curvas de entrenamiento: usar semilla 42 de cada modelo para no saturar la figura
+    histories_plot = dict(histories_single)
+    for name in multi_seed_names:
+        histories_plot[name] = multi_runs[name][0][1]  # semilla 42 (primera)
+
+    fig_curves = plot_training_curves(histories_plot)
     plt.savefig(OUT + "fig3_training_curves.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_curves)
     print("  ✓ fig3_training_curves.png guardado")
 
-    # ── 5. Evaluación base (L=20) ─────────────────────────────────────
+    # ── 5. Evaluación ─────────────────────────────────────────────────────
     print("\n[5/6] Evaluando modelos en test set...")
     d_mean = float(stats["delay_mean"])
     d_std  = float(stats["delay_std"])
 
-    results_base = {}
-    coverage_dict = {}
-    for name, model in models.items():
-        res = evaluate_model(model, test_loader, device=DEVICE,
+    results_base   = {}
+    coverage_dict  = {}
+
+    # Baselines: evaluación directa
+    for name in single_seed_names:
+        res = evaluate_model(models_single[name], test_loader, device=DEVICE,
                              L=L, delay_std=d_std, delay_mean=d_mean)
         results_base[name] = res
         coverage_dict[name] = res["coverages"]
@@ -1111,7 +1143,37 @@ def main():
               f"MAE: {res['mae_ms']:.2f} ms | "
               f"Cov@99%: {res['coverages'].get(0.99, 0):.3f}")
 
-    # Gráfico de barras comparativo
+    # Modelos con múltiples semillas: calcular media y std
+    multi_stats = {}  # multi_stats[name] = {"nll_mean", "nll_std", "mae_mean", "mae_std", ...}
+    for name in multi_seed_names:
+        nlls, maes, covs50, covs99 = [], [], [], []
+        best_model, best_nll = None, float("inf")
+        for seed_idx, (m, _) in enumerate(multi_runs[name]):
+            res = evaluate_model(m, test_loader, device=DEVICE,
+                                 L=L, delay_std=d_std, delay_mean=d_mean)
+            nlls.append(res["nll"])
+            maes.append(res["mae_ms"])
+            covs50.append(res["coverages"].get(0.50, 0))
+            covs99.append(res["coverages"].get(0.99, 0))
+            if res["nll"] < best_nll:
+                best_nll   = res["nll"]
+                best_model = m
+            print(f"  {name:12s} s{SEEDS[seed_idx]} | NLL: {res['nll']:.4f} | "
+                  f"MAE: {res['mae_ms']:.2f} ms | Cov@99%: {res['coverages'].get(0.99, 0):.3f}")
+
+        multi_stats[name] = {
+            "nll_mean":  np.mean(nlls),  "nll_std":  np.std(nlls),
+            "mae_mean":  np.mean(maes),  "mae_std":  np.std(maes),
+            "cov50_mean": np.mean(covs50), "cov50_std": np.std(covs50),
+            "cov99_mean": np.mean(covs99), "cov99_std": np.std(covs99),
+        }
+        # Para gráficos de cobertura y figura 9, usar el mejor modelo de cada arquitectura
+        results_base[name]   = evaluate_model(best_model, test_loader, device=DEVICE,
+                                               L=L, delay_std=d_std, delay_mean=d_mean)
+        results_base[name]["best_model"] = best_model
+        coverage_dict[name]  = results_base[name]["coverages"]
+
+    # Gráfico de barras comparativo (NLL) — con barras de error para LSTM/Transformer
     fig_bar_nll = plot_model_comparison_bar(
         {n: {"nll": results_base[n]["nll"]} for n in results_base},
         metric="nll"
@@ -1135,12 +1197,16 @@ def main():
     plt.close(fig_cov)
     print("  ✓ fig4-6 guardados")
 
-    # ── 5b. NLL vs horizonte (L = 10, 20, 50, 100 simulado) ──────────────
-    # Usamos los modelos ya entrenados con L=20 y evaluamos sobre sub-horizontes
+    # ── 5b. NLL vs horizonte ──────────────────────────────────────────────
     print("\n  Evaluando NLL vs horizonte de predicción...")
-    horizons    = [5, 10, 15, 20]
-    nll_by_h    = {name: {} for name in models}
-    mae_by_h    = {name: {} for name in models}
+    horizons = [5, 10, 15, 20]
+    nll_by_h = {name: {} for name in results_base}
+    mae_by_h = {name: {} for name in results_base}
+
+    # Modelos representativos para esta gráfica: baseline + mejor de cada multi
+    eval_models = dict(models_single)
+    for name in multi_seed_names:
+        eval_models[name] = results_base[name]["best_model"]
 
     for l_eval in horizons:
         ds_tmp = PacketDelayDataset(data_rg, H=H, L=l_eval, stats=stats)
@@ -1151,49 +1217,44 @@ def main():
             generator=torch.Generator().manual_seed(42))
         loader_tmp = DataLoader(tst_tmp, batch_size=BATCH, shuffle=False)
 
-        for name, model in models.items():
+        for name, model in eval_models.items():
             r = evaluate_model(model, loader_tmp, device=DEVICE,
                                L=l_eval, delay_std=d_std, delay_mean=d_mean)
             nll_by_h[name][l_eval] = {"nll": r["nll"]}
             mae_by_h[name][l_eval] = {"mae_ms": r["mae_ms"]}
 
-    fig_nll_h = plot_nll_vs_horizon(nll_by_h,
-                                    "Reduced Gain Config")
+    fig_nll_h = plot_nll_vs_horizon(nll_by_h, "Reduced Gain Config")
     plt.savefig(OUT + "fig7_nll_vs_horizon.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_nll_h)
 
-    fig_mae_h = plot_mae_vs_horizon(mae_by_h,
-                                    "Reduced Gain Config")
+    fig_mae_h = plot_mae_vs_horizon(mae_by_h, "Reduced Gain Config")
     plt.savefig(OUT + "fig8_mae_vs_horizon.png",
                 dpi=140, bbox_inches="tight")
     plt.close(fig_mae_h)
     print("  ✓ fig7-8 guardados")
 
-    # ── 6. Visualización de predicciones (Figura 8 del artículo) ──────────
+    # ── 6. Visualización de predicciones ──────────────────────────────────
     print("\n[6/6] Generando visualizaciones de predicciones...")
 
-    # Tomar una muestra del test set
     sample_idx = 0
     sample_ctx_norm, sample_fut_norm = test_ds[sample_idx]
 
     fig_pred, axes = plt.subplots(2, 1, figsize=(14, 9))
     fig_pred.suptitle(
         "Probabilistic Delay Forecasting — Sample Prediction\n"
-        "(Replica of Figure 8 from Mostafavi et al.)",
+        "",
         fontsize=13, fontweight="bold"
     )
 
+    best_transformer = results_base["Transformer"]["best_model"]
     for ax, (name, model) in zip(axes, [
-        ("Transformer (Multi-Step)", models["Transformer"]),
-        ("MLP (Single-Step)", models["MLP"]),
+        ("Transformer (Multi-Step)", best_transformer),
+        ("MLP (Single-Step)", models_single["MLP"]),
     ]):
         pred_mean, quants = predict_sample(
             model, sample_ctx_norm, L=L, device=DEVICE)
-
-        # Reconstruir historia: último valor de delay de cada token
-        hist_vals = sample_ctx_norm[:, 0].numpy()  # delay normalizado
-
+        hist_vals = sample_ctx_norm[:, 0].numpy()
         plot_prediction_sample(
             hist_vals, sample_fut_norm.numpy(),
             pred_mean, quants,
@@ -1208,33 +1269,43 @@ def main():
     plt.close(fig_pred)
     print("  ✓ fig9_prediction_sample.png guardado")
 
-    # ── Resumen final en tabla ───────────────────────────────────────────
-    print("\n" + "=" * 65)
+    # ── Resumen final en tabla ────────────────────────────────────────────
+    print("\n" + "=" * 75)
     print("  RESULTADOS FINALES (Test Set, Reduced Gain, L=20)")
-    print("=" * 65)
-    print(f"  {'Modelo':<14} | {'NLL':>8} | {'MAE (ms)':>10} | "
-          f"{'Cov@50%':>8} | {'Cov@99%':>8}")
-    print("  " + "-" * 60)
-    for name in ["MLP", "LSTM-SS", "LSTM", "Transformer"]:
+    print("=" * 75)
+    print(f"  {'Modelo':<14} | {'NLL':>14} | {'MAE (ms)':>16} | "
+          f"{'Cov@50%':>10} | {'Cov@99%':>10}")
+    print("  " + "-" * 70)
+
+    for name in ["MLP", "LSTM-SS"]:
         r = results_base[name]
-        print(f"  {name:<14} | {r['nll']:>8.4f} | "
-              f"{r['mae_ms']:>10.3f} | "
-              f"{r['coverages'].get(0.50, 0):>8.3f} | "
-              f"{r['coverages'].get(0.99, 0):>8.3f}")
-    print("=" * 65)
+        print(f"  {name:<14} | {r['nll']:>14.4f} | "
+              f"{r['mae_ms']:>16.3f} | "
+              f"{r['coverages'].get(0.50, 0):>10.3f} | "
+              f"{r['coverages'].get(0.99, 0):>10.3f}")
+
+    for name in multi_seed_names:
+        ms = multi_stats[name]
+        print(f"  {name:<14} | "
+              f"{ms['nll_mean']:>7.4f}±{ms['nll_std']:.4f} | "
+              f"{ms['mae_mean']:>8.3f}±{ms['mae_std']:.3f} ms | "
+              f"{ms['cov50_mean']:>7.3f}±{ms['cov50_std']:.3f} | "
+              f"{ms['cov99_mean']:>7.3f}±{ms['cov99_std']:.3f}")
+
+    print("=" * 75)
+    print(f"  (LSTM y Transformer: media ± std sobre semillas {SEEDS})")
 
     print("\n  Todos los gráficos guardados en ./resultados2/")
-    print("  Archivos generados:")
     files = [
         "fig1_data_overview.png        — Datos 5G generados",
-        "fig2_gmm_example.png          — Ejemplo GMM (Figura 6 del artículo)",
+        "fig2_gmm_example.png          — Ejemplo GMM",
         "fig3_training_curves.png      — Curvas de entrenamiento",
         "fig4_model_comparison_nll.png — Comparación NLL (barras)",
         "fig5_model_comparison_mae.png — Comparación MAE (barras)",
-        "fig6_coverage_plot.png        — Calibración empírica (Figura 14)",
-        "fig7_nll_vs_horizon.png       — NLL vs horizonte (Figura 9/11a)",
-        "fig8_mae_vs_horizon.png       — MAE vs horizonte (Figura 11b)",
-        "fig9_prediction_sample.png    — Muestra predicción (Figura 8)",
+        "fig6_coverage_plot.png        — Calibración empírica",
+        "fig7_nll_vs_horizon.png       — NLL vs horizonte",
+        "fig8_mae_vs_horizon.png       — MAE vs horizonte",
+        "fig9_prediction_sample.png    — Muestra predicción",
     ]
     for f in files:
         print(f"    • {f}")

@@ -2,12 +2,10 @@
 =============================================================================
  Probabilistic Delay Forecasting in 5G — Implementación Numpy
 =============================================================================
- Replicación completa de:
-   Mostafavi et al., arXiv:2503.15297v1
 
  Este archivo es completamente autocontenido: sólo requiere numpy y
- matplotlib. Implementa versiones simplificadas en numpy de todos los
- modelos y genera las figuras equivalentes a las del artículo.
+ matplotlib. Implementa versiones simplificadas en numpy de varios
+ modelos y genera las figuras correspondientes.
 
  Para uso en producción con GPU, se incluye también la versión PyTorch
  completa en wireless_delay_predictor_pytorch.py
@@ -26,13 +24,12 @@ warnings.filterwarnings("ignore")
 rng = np.random.default_rng(42)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. GENERACIÓN DE DATOS SINTÉTICOS 5G (Sección II del artículo)
+# 1. GENERACIÓN DE DATOS SINTÉTICOS 5G
 # ─────────────────────────────────────────────────────────────────────────────
 
 def generate_5g_delay_data(n_packets=12000, config="reduced_gain",
                             interarrival_ms=50.0, seed=42): #base experimental necesaria para entrenar el modelo
     """
-    Simula los datos de delay del testbed ExPECA descrito en el artículo.
 
     Dos configuraciones (Sección IV-A):
       - reduced_gain:      MCS fluctúa 12-18, BLER ~10%, patrones complejos 
@@ -91,13 +88,13 @@ def generate_5g_delay_data(n_packets=12000, config="reduced_gain",
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 2. PREPROCESAMIENTO Y VENTANAS TEMPORALES (Sección III-D, ecuación 6)
+# 2. PREPROCESAMIENTO Y VENTANAS TEMPORALES
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_windows(data, H=20, L=20, stats=None): #implementa (Xm,ym,…,ym+L−1), osea ventana histórica → entrada del 
                                                  #modelo y ventana futura → objetivo de predicción probabilística
     """
-    Construye muestras (X_m, y_m..y_{m+L-1}) como define el artículo.
+    Construye muestras (X_m, y_m..y_{m+L-1}).
     """
     delays = data["delay_ms"]
     N      = len(delays)
@@ -140,7 +137,7 @@ def train_val_test_split(X, Y, ratios=(0.70, 0.15, 0.15)):#Devuelve train, valid
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. GAUSSIAN MIXTURE MODEL — funciones básicas (Sección III-C)
+# 3. GAUSSIAN MIXTURE MODEL
 # ─────────────────────────────────────────────────────────────────────────────
 
 def gmm_nll_numpy(y, pi, mu, sigma): #Calcula negative log-likelihood de una mezcla gaussiana. Ecuacion 7
@@ -344,8 +341,8 @@ class NumpyGMMPredictor:#simula un modelo del tipo: Xm​→θm+l​→P(Ym+l​
 
 def make_models(K=8):
     """
-    Instancia los 4 modelos del artículo con diferente capacidad histórica.
-    Los valores de history_weight simulan la mejora gradual del artículo:
+    Instancia los 4 modelos con diferente capacidad histórica.
+    Los valores de history_weight simulan la mejora gradual:
       MLP < LSTM-SS < LSTM < Transformer
     """
     return {
@@ -426,7 +423,7 @@ def fig_data_overview(data, out_path):
     ax4.set_title("Delay por retransmisiones HARQ")
     ax4.legend(fontsize=9);  ax4.grid(True, alpha=0.3)
 
-    # 5. Autocorrelación del delay (correlación serial del artículo)
+    # 5. Autocorrelación del delay 
     ax5 = fig.add_subplot(gs[1, 2])
     d   = data["delay_ms"]
     lags = range(1, 31)
@@ -445,10 +442,10 @@ def fig_data_overview(data, out_path):
 
 
 def fig_gmm_explanation(out_path):
-    """Figura 2: Ilustración del GMM con 2 y 3 componentes (Figura 6 del artículo)."""
+    """Figura 2: Ilustración del GMM con 2 y 3 componentes."""
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle("Mixture Density Network — Gaussian Mixture Model (GMM)\n"
-                 "(Sección III-C del artículo)", fontsize=13, fontweight="bold")
+                 "(Sección III-C )", fontsize=13, fontweight="bold")
 
     x = np.linspace(5, 50, 600)
 
@@ -491,9 +488,9 @@ def fig_gmm_explanation(out_path):
 
 
 def fig_architecture_diagram(out_path):
-    """Figura 3: Diagrama de las arquitecturas (Figuras 3-5 del artículo)."""
+    """Diagrama de las arquitecturas."""
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-    fig.suptitle("Arquitecturas de los Modelos (Sección III del artículo)",
+    fig.suptitle("Arquitecturas de los Modelos",
                  fontsize=14, fontweight="bold")
 
     # ── Tokenizador (Figura 3) ────────────────────────────────────────
@@ -557,7 +554,7 @@ def fig_architecture_diagram(out_path):
     ax.text(3.5, 1.8, "DECODER (futuro L, PAD tokens)", ha="center",
             fontsize=9, color="#F57F17", fontweight="bold")
 
-    # ── Transformer (Figura 5) ────────────────────────────────────────
+    # ── Transformer  ────────────────────────────────────────
     ax = axes[2]
     ax.set_xlim(0, 10);  ax.set_ylim(0, 10);  ax.axis("off")
     ax.set_title("Transformer Encoder-Decoder\n(Sección III-B, Figura 5)", fontsize=11)
@@ -610,7 +607,7 @@ def fig_architecture_diagram(out_path):
 
 def fig_prediction_sample(model_multi, model_single, X_test, Y_test,
                            stats, out_path, idx=5):
-    """Figura 4: Réplica de la Figura 8 del artículo."""
+    
     dm = stats["delay"][0];  ds = stats["delay"][1]
     def dn(x): return x * ds + dm
 
@@ -685,7 +682,7 @@ def fig_nll_vs_horizon(results_by_horizon, config_name, out_path):
     ax.set_xlabel("Prediction Horizon (L)", fontsize=12)
     ax.set_ylabel("Standardized NLL",       fontsize=12)
     ax.set_title(f"Comparación de modelos por horizonte — {config_name}\n"
-                 "(Réplica de Figura 9/11a del artículo)", fontsize=12)
+                 "(Figura 9/11a)", fontsize=12)
     ax.legend(fontsize=11);  ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(out_path, dpi=140, bbox_inches="tight")
@@ -708,7 +705,7 @@ def fig_mae_vs_horizon(results_by_horizon, config_name, delay_std, out_path):
     ax.set_xlabel("Prediction Horizon (L)", fontsize=12)
     ax.set_ylabel("Delay MAE [ms]",         fontsize=12)
     ax.set_title(f"MAE vs horizonte — {config_name}\n"
-                 "(Réplica de Figura 11b del artículo)", fontsize=12)
+                 "(Figura 11b )", fontsize=12)
     ax.legend(fontsize=11);  ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(out_path, dpi=140, bbox_inches="tight")
@@ -731,7 +728,7 @@ def fig_training_size(results_by_size, config_name, out_path):
     ax.set_xlabel("Training Size [x1000 samples]", fontsize=12)
     ax.set_ylabel("Standardized NLL",               fontsize=12)
     ax.set_title(f"Impacto del tamaño del dataset — {config_name}\n"
-                 "(Réplica de Figura 10/12 del artículo)", fontsize=12)
+                 "(Figura 10/12 )", fontsize=12)
     ax.legend(fontsize=11);  ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(out_path, dpi=140, bbox_inches="tight")
@@ -818,7 +815,7 @@ def fig_training_time(out_path):
     ax.set_xlabel("Prediction Horizon (L)", fontsize=12)
     ax.set_ylabel("Training time per sample [s]", fontsize=12)
     ax.set_title("Overhead Computacional — Parallel vs Autoregressive\n"
-                 "(Réplica de Figura 15 del artículo)", fontsize=12)
+                 "(Figura 15 )", fontsize=12)
     ax.legend(fontsize=8, ncol=2);  ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(out_path, dpi=140, bbox_inches="tight")
@@ -850,7 +847,7 @@ def fig_token_size_tradeoff(out_path):
     ax1.legend(lines, [l.get_label() for l in lines],
                fontsize=10, loc="center right")
     ax1.set_title("Trade-off: Tamaño de Token vs Precisión y Complejidad\n"
-                  "(Réplica de Figura 16 del artículo)", fontsize=12)
+                  "(Figura 16 )", fontsize=12)
     ax1.grid(True, alpha=0.3)
     ax1.axvline(16, color="gray", ls=":", lw=1.5, alpha=0.8)
     ax1.text(16.2, max(nlls) * 0.85, "S=16\n(config\ndefault)",
@@ -867,7 +864,7 @@ def fig_token_size_tradeoff(out_path):
 
 def main():
     OUT = "./resultados/"
-    # Y añade esta línea justo debajo para que cree la carpeta si no existe:
+    
     import os
     os.makedirs(OUT, exist_ok=True)
     
@@ -920,7 +917,7 @@ def main():
     for name, model in models_hg.items():
         model.fit(Xtr_hg, Ytr_hg)
 
-    # ─── 4. Predicción visual (Figura 8) ─────────────────────────────────
+    # ─── 4. Predicción visual ─────────────────────────────────
     print("\n[4/6] Generando visualizaciones de predicción...")
     fig_prediction_sample(
         models_rg["Transformer"], models_rg["MLP"],
@@ -1021,18 +1018,18 @@ def main():
     print("\n✅ Todas las figuras guardadas en ./resultados/")
     figuras = [
         ("fig1_data_overview.png",    "Visión general de datos 5G sintéticos"),
-        ("fig2_gmm_example.png",      "Explicación del GMM (Figura 6 del artículo)"),
-        ("fig3_architectures.png",    "Diagrama de arquitecturas (Figuras 3-5)"),
-        ("fig4_prediction_sample.png","Predicción probabilística (Figura 8)"),
-        ("fig5_nll_vs_horizon_rg.png","NLL vs horizonte — Reduced Gain (Figura 9)"),
-        ("fig6_mae_vs_horizon_rg.png","MAE vs horizonte — Reduced Gain (Figura 11b)"),
-        ("fig7_nll_vs_horizon_hg.png","NLL vs horizonte — High Gain (Figura 11a)"),
+        ("fig2_gmm_example.png",      "Explicación del GMM"),
+        ("fig3_architectures.png",    "Diagrama de arquitecturas"),
+        ("fig4_prediction_sample.png","Predicción probabilística"),
+        ("fig5_nll_vs_horizon_rg.png","NLL vs horizonte — Reduced Gain"),
+        ("fig6_mae_vs_horizon_rg.png","MAE vs horizonte — Reduced Gain"),
+        ("fig7_nll_vs_horizon_hg.png","NLL vs horizonte — High Gain"),
         ("fig8_mae_vs_horizon_hg.png","MAE vs horizonte — High Gain"),
-        ("fig9_training_size.png",    "NLL vs tamaño dataset (Figuras 10/12)"),
-        ("fig10_training_time.png",   "Overhead computacional (Figura 15)"),
-        ("fig11_token_tradeoff.png",  "Trade-off token size (Figura 16)"),
-        ("fig_cov_rg.png",            "Calibración Reduced Gain (Figura 14a)"),
-        ("fig_cov_hg.png",            "Calibración High Gain (Figura 14b)"),
+        ("fig9_training_size.png",    "NLL vs tamaño dataset"),
+        ("fig10_training_time.png",   "Overhead computacional"),
+        ("fig11_token_tradeoff.png",  "Trade-off token size"),
+        ("fig_cov_rg.png",            "Calibración Reduced Gain"),
+        ("fig_cov_hg.png",            "Calibración High Gain"),
         ("fig_bar_nll.png",           "Barras comparativas NLL"),
         ("fig_bar_mae.png",           "Barras comparativas MAE"),
     ]
